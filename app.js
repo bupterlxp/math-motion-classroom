@@ -493,8 +493,12 @@ async function generateLesson() {
 }
 generateBtn.addEventListener("click", generateLesson);
 
-$("#previewFullBtn").addEventListener("click", () => $("#fullPreview").classList.add("open"));
-$("#previewCanvasBtn").addEventListener("click", () => $("#fullPreview").classList.add("open"));
+function openFullPreview() {
+  $("#fullPreview").classList.add("open");
+  requestAnimationFrame(() => drawCube(timelineValue));
+}
+$("#previewFullBtn").addEventListener("click", openFullPreview);
+$("#previewCanvasBtn").addEventListener("click", openFullPreview);
 $("#closePreview").addEventListener("click", () => $("#fullPreview").classList.remove("open"));
 $("#fullPreview").addEventListener("click", (event) => { if (event.target === event.currentTarget) event.currentTarget.classList.remove("open"); });
 $("#fullPlay").addEventListener("click", () => { $("#fullPreview").classList.remove("open"); togglePlaying(true); showToast("动画已在画布中播放"); });
