@@ -11,7 +11,7 @@ function loadDotEnv() {
   }
 }
 loadDotEnv();
-const { generateLesson, DEFAULT_MODEL } = require("./lib/openai");
+const { generateLesson, streamLesson, DEFAULT_MODEL } = require("./lib/openai");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 4173);
@@ -24,6 +24,7 @@ function headers(res) {
 }
 
 function json(res, status, value) { res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(value)); }
+function event(res, value) { res.write(`data: ${JSON.stringify(value)}\n\n`); }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -39,6 +40,23 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") return res.writeHead(204).end();
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   if (url.pathname === "/api/status" && req.method === "GET") return json(res, 200, { configured: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_MODEL || DEFAULT_MODEL });
+  if (url.pathname === "/api/generate-stream" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+      if (!prompt) return json(res, 400, { error: "请输入教学需求" });
+      if (prompt.length > 4000) return json(res, 413, { error: "教学需求不能超过 4000 字" });
+      res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+      event(res, { type: "ready", model: process.env.OPENAI_MODEL || DEFAULT_MODEL });
+      const lesson = await streamLesson(prompt, body, (chunk) => event(res, chunk));
+      event(res, { type: "complete", lesson, model: process.env.OPENAI_MODEL || DEFAULT_MODEL });
+      return res.end();
+    } catch (error) {
+      if (!res.headersSent) return json(res, error.code === "MISSING_API_KEY" ? 503 : 500, { error: error.message || "生成失败" });
+      event(res, { type: "error", error: error.message || "生成失败", code: error.code || "GENERATION_ERROR" });
+      return res.end();
+    }
+  }
   if (url.pathname === "/api/generate" && req.method === "POST") {
     try {
       const body = await readBody(req);

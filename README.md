@@ -18,7 +18,7 @@ npm run dev
 
 ## 真实 AI 生成
 
-后端接口位于 `POST /api/generate`，密钥只从服务端的 `OPENAI_API_KEY` 环境变量读取，浏览器永远不会接触密钥。接口会让模型返回结构化的教学信息和一份自包含 HTML，前端在沙箱 iframe 中预览并允许下载。`local-server.js` 仅用于本地开发，Vercel 生产环境使用 `api/` 下的 Serverless Functions。
+后端接口位于 `POST /api/generate`，实时接口为 `POST /api/generate-stream`。密钥只从服务端的 `OPENAI_API_KEY` 环境变量读取，浏览器永远不会接触密钥。实时接口通过 SSE 转发模型输出，前端会显示目标拆解、场景设计、互动题和 HTML 编译进度；完整课件到达后立即在沙箱 iframe 中渲染并允许下载。`local-server.js` 仅用于本地开发，Vercel 生产环境使用 `api/` 下的 Serverless Functions。
 
 生产环境可以直接部署到 Vercel：导入仓库，添加 `OPENAI_API_KEY`（可选 `OPENAI_MODEL`、`OPENAI_BASE_URL`），Vercel 会自动识别 `api/generate.js`。如果前端仍托管在 GitHub Pages，可以使用 `?api=https://你的-api-域名` 指定后端地址；后端需将 `ALLOWED_ORIGIN` 设置为 Pages 域名。`OPENAI_BASE_URL` 支持 OpenAI-compatible 代理，填写根域名或带 `/v1` 的地址均可。
 

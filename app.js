@@ -12,6 +12,8 @@ const timeReadout = $("#timeReadout");
 const playBtn = $("#playBtn");
 const toast = $("#toast");
 const aiPreviewFrame = $("#aiPreviewFrame");
+const cubeCanvas = $("#cubeCanvas");
+const fullCubeCanvas = $("#fullCubeCanvas");
 const publicApiBase = window.location.hostname.endsWith("github.io") ? "https://mathteacher-lake.vercel.app" : "";
 const API_BASE = (new URLSearchParams(window.location.search).get("api") || window.MATH_MOTION_API_BASE || publicApiBase).replace(/\/$/, "");
 let timelineValue = 0;
@@ -31,11 +33,106 @@ function showToast(message) {
 
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 
+const cubeColors = ["#ff9b8b", "#ff806d", "#ffb3a3", "#ffd968", "#a9dfc8", "#ecc44e"];
+const cubeLabels = ["⑤", "②", "③", "①", "⑥", "④"];
+const cubeNetPositions = {
+  back: [[220, 10], [282, 10], [282, 72], [220, 72]],
+  top: [[220, 72], [282, 72], [282, 134], [220, 134]],
+  front: [[220, 134], [282, 134], [282, 196], [220, 196]],
+  bottom: [[220, 196], [282, 196], [282, 258], [220, 258]],
+  left: [[158, 134], [220, 134], [220, 196], [158, 196]],
+  right: [[282, 134], [344, 134], [344, 196], [282, 196]]
+};
+const cubeSolidPositions = {
+  back: [[155, 69], [265, 35], [375, 69], [265, 104]],
+  top: [[220, 104], [290, 69], [375, 69], [332, 104]],
+  front: [[220, 104], [332, 104], [332, 216], [220, 216]],
+  bottom: [[220, 216], [332, 216], [375, 181], [290, 249]],
+  left: [[220, 104], [155, 69], [155, 181], [220, 216]],
+  right: [[332, 104], [375, 69], [375, 181], [332, 216]]
+};
+
+function interpolatePoints(from, to, amount) {
+  return from.map((point, index) => [point[0] + (to[index][0] - point[0]) * amount, point[1] + (to[index][1] - point[1]) * amount]);
+}
+
+function drawPolygon(ctx, points, fill, stroke = "#2f5360", alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  points.forEach(([x, y], index) => index ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 1.35;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCubeOn(canvas, value = 0) {
+  const cubeContext = canvas?.getContext("2d");
+  if (!cubeContext || !canvas) return;
+  const width = canvas.clientWidth || 620;
+  const height = canvas.clientHeight || 298;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+  }
+  cubeContext.setTransform(dpr * width / 620, 0, 0, dpr * height / 298, 0, 0);
+  cubeContext.clearRect(0, 0, 620, 298);
+  const ease = value * value * (3 - 2 * value);
+  const names = ["back", "left", "bottom", "front", "right", "top"];
+  const indexes = { back: 0, front: 1, right: 2, top: 3, bottom: 4, left: 5 };
+  const faces = names.map((name) => ({ name, points: interpolatePoints(cubeSolidPositions[name], cubeNetPositions[name], ease), index: indexes[name] }));
+  cubeContext.save();
+  cubeContext.fillStyle = "rgba(48, 88, 84, .13)";
+  cubeContext.filter = "blur(10px)";
+  cubeContext.beginPath();
+  cubeContext.ellipse(267, 246, 125 - ease * 35, 16 - ease * 5, 0, 0, Math.PI * 2);
+  cubeContext.fill();
+  cubeContext.restore();
+  faces.forEach(({ name, points, index }) => drawPolygon(cubeContext, points, cubeColors[index], "#315260", name === "back" ? .45 + ease * .55 : 1));
+  faces.forEach(({ name, points }) => {
+    const center = points.reduce((total, point) => [total[0] + point[0] / 4, total[1] + point[1] / 4], [0, 0]);
+    cubeContext.fillStyle = "rgba(34,58,69,.7)";
+    cubeContext.font = "500 13px DM Mono, monospace";
+    cubeContext.textAlign = "center";
+    cubeContext.fillText(cubeLabels[indexes[name]], center[0], center[1] + 4);
+    cubeContext.beginPath();
+    cubeContext.arc(center[0] - 15, center[1] + 18, 2.5, 0, Math.PI * 2);
+    cubeContext.fillStyle = "rgba(255,255,255,.7)";
+    cubeContext.fill();
+  });
+  if (ease > .08 && ease < .94) {
+    cubeContext.save();
+    cubeContext.setLineDash([3, 4]);
+    cubeContext.strokeStyle = "rgba(255,108,89,.75)";
+    cubeContext.lineWidth = 1;
+    cubeContext.beginPath();
+    cubeContext.moveTo(220, 134); cubeContext.lineTo(282, 134); cubeContext.moveTo(220, 196); cubeContext.lineTo(282, 196);
+    cubeContext.stroke();
+    cubeContext.restore();
+  }
+  cubeContext.fillStyle = "#71858a";
+  cubeContext.font = "10px Noto Sans SC, sans-serif";
+  cubeContext.textAlign = "center";
+  cubeContext.fillText(ease > .78 ? "展开图 · 六个面连成一个平面图形" : ease > .12 ? "沿着边缘翻折，注意相邻面的关系" : "正方体 · 六个全等的正方形", 267, 287);
+}
+
+function drawCube(value = 0) {
+  drawCubeOn(cubeCanvas, value);
+  drawCubeOn(fullCubeCanvas, value);
+}
+
 function setTimeline(value) {
   timelineValue = clamp(value, 0, 1);
   const percent = `${timelineValue * 100}%`;
   timelineProgress.style.width = percent;
   timelineThumb.style.left = percent;
+  const fullProgress = $("#fullPreview .full-progress span");
+  if (fullProgress) fullProgress.style.width = percent;
   const seconds = Math.round(timelineValue * 12);
   timeReadout.textContent = `00:${String(seconds).padStart(2, "0")} / 00:12`;
   cubeNet.classList.toggle("is-net", timelineValue > .78);
@@ -43,6 +140,7 @@ function setTimeline(value) {
   if (timelineValue > .2 && timelineValue < .79) {
     cubeNet.classList.remove("is-net");
   }
+  drawCube(timelineValue);
 }
 
 function togglePlaying(force) {
@@ -205,6 +303,76 @@ async function requestAiLesson(prompt) {
   return payload;
 }
 
+async function requestAiLessonStream(prompt, onEvent) {
+  const response = await fetch(`${API_BASE}/api/generate-stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify({ prompt, grade: "七至九年级", duration: "40 分钟" })
+  });
+  if (!response.ok) {
+    let payload = {};
+    try { payload = await response.json(); } catch { /* server may return a plain error */ }
+    throw new Error(payload.error || `流式生成服务不可用（${response.status}）`);
+  }
+  if (!response.body) throw new Error("浏览器不支持实时生成");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = null;
+  const consume = (chunk) => {
+    buffer += chunk;
+    const events = buffer.split(/\n\n/);
+    buffer = events.pop() || "";
+    events.forEach((eventText) => {
+      const line = eventText.split(/\n/).find((line) => line.startsWith("data:"));
+      if (!line) return;
+      try {
+        const event = JSON.parse(line.slice(5).trim());
+        onEvent(event);
+        if (event.type === "complete") completed = event.lesson;
+        if (event.type === "error") throw new Error(event.error || "实时生成失败");
+      } catch (error) {
+        if (error instanceof Error && error.message !== "Unexpected end of JSON input") throw error;
+      }
+    });
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    consume(decoder.decode(value, { stream: true }));
+  }
+  consume(decoder.decode());
+  if (!completed) throw new Error("实时生成未返回完整课件");
+  return completed;
+}
+
+function setGenerationPhase(activeName, streamText) {
+  const order = ["intent", "scene", "activity", "html"];
+  const activeIndex = order.indexOf(activeName);
+  $$('.generation-phase').forEach((phase) => {
+    const index = order.indexOf(phase.dataset.phase);
+    phase.classList.toggle("done", index < activeIndex);
+    phase.classList.toggle("active", index === activeIndex);
+    const status = phase.querySelector("i");
+    if (status) status.textContent = index < activeIndex ? "已完成" : index === activeIndex ? "进行中" : "等待";
+  });
+  if (streamText) $("#generationStreamText").textContent = streamText;
+}
+
+function updateGenerationProgress(event) {
+  if (event.type === "ready") {
+    $("#generationTitle").textContent = `正在用 ${event.model || "AI"} 设计这节课…`;
+    setGenerationPhase("intent", "正在建立知识点关系…");
+    return;
+  }
+  if (event.type !== "delta") return;
+  const length = event.length || 0;
+  const phase = length > 3600 ? "html" : length > 1800 ? "activity" : length > 600 ? "scene" : "intent";
+  const copy = { intent: "教学目标已接收，正在提炼关键规律…", scene: "正在把数学关系变成可视化场景…", activity: "正在编写学生可以操作的互动题…", html: "正在编译并检查可下载 HTML…" };
+  setGenerationPhase(phase, copy[phase]);
+  $("#generationCharCount").textContent = `${length.toLocaleString("zh-CN")} 字符`;
+}
+
 function showLessonResult(lesson, source) {
   currentLesson = lesson;
   currentGeneratedHtml = lesson.html;
@@ -294,9 +462,19 @@ async function generateLesson() {
   if (!promptInput.value.trim()) { promptInput.focus(); showToast("先描述你想演示的数学概念"); return; }
   generateBtn.classList.add("is-loading");
   animationStage.classList.add("is-generating");
+  $("#generationTitle").textContent = "正在连接 AI 教学设计器…";
+  $("#generationCharCount").textContent = "0 字符";
+  setGenerationPhase("intent", "正在建立知识点关系…");
   generateBtn.innerHTML = '<span class="sparkle">✦</span><span>正在生成…</span><span class="arrow">·</span>';
   try {
-    const lesson = await requestAiLesson(promptInput.value.trim());
+    let lesson;
+    try {
+      lesson = await requestAiLessonStream(promptInput.value.trim(), updateGenerationProgress);
+    } catch (streamError) {
+      // Older deployments may not have the stream function yet; preserve generation by retrying JSON mode.
+      if (/不可用|不支持|404/.test(streamError.message)) lesson = await requestAiLesson(promptInput.value.trim());
+      else throw streamError;
+    }
     showLessonResult(lesson, "ai");
     showToast(`AI 已生成“${lesson.title}”，可预览或下载`);
   } catch (error) {
@@ -404,3 +582,4 @@ if (savedNote && $("#notesArea")) $("#notesArea").value = savedNote;
 loadSavedProjects();
 checkApiStatus();
 setTimeline(0);
+window.addEventListener("resize", () => drawCube(timelineValue));
