@@ -75,8 +75,8 @@
               <p class="header-copy">描述你想演示的数学概念，课堂动势会生成动画、讲解和互动练习。</p>
             </div>
             <div class="header-meta">
-              <div class="meta-chip"><span class="status-pulse"></span><span>本月还可生成 <strong>18</strong> 个课件</span></div>
-              <div class="meta-caption">适用于 7–9 年级 · 支持中文</div>
+              <div class="meta-chip" id="apiStatusChip"><span class="status-pulse"></span><span id="apiStatusText">正在检查 AI 连接…</span></div>
+              <div class="meta-caption">适用于 7–9 年级 · <span id="apiModeText">演示模式</span> · 本月剩余 <strong>18</strong> 次</div>
             </div>
           </section>
 
@@ -104,6 +104,7 @@
                 <div class="animation-stage" id="animationStage">
                   <div class="stage-grid"></div>
                   <div class="stage-topline"><span>空间几何</span><span class="stage-number">01</span></div>
+                  <iframe id="aiPreviewFrame" class="ai-preview-frame" title="AI 生成的课件预览" sandbox="allow-scripts allow-forms"></iframe>
                   <div class="cube-scene" id="cubeScene" aria-label="正方体展开动画">
                     <div class="cube-shadow"></div>
                     <div class="cube-net" id="cubeNet">

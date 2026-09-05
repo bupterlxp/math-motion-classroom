@@ -104,6 +104,8 @@ h1 em::after { content: ""; position: absolute; left: 0; right: 0; height: 5px; 
 .header-copy { margin: 14px 0 0; color: var(--muted); font-size: 13px; line-height: 1.9; }
 .header-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding-bottom: 7px; }
 .meta-chip { display: flex; align-items: center; gap: 7px; border: 1px solid #dfe9e4; background: var(--mint-pale); color: #528470; border-radius: 20px; padding: 7px 11px; font-size: 10px; }
+.meta-chip.offline { border-color: #f0e4c1; background: var(--yellow-pale); color: #927b37; }
+.meta-chip.offline .status-pulse { background: #c9a22b; box-shadow: 0 0 0 3px rgba(201,162,43,.14); }
 .meta-chip strong { color: var(--mint-dark); }
 .status-pulse { width: 6px; height: 6px; border-radius: 50%; background: #4bb78e; box-shadow: 0 0 0 3px rgba(75,183,142,.15); }
 .meta-caption { color: #a0aab1; font-size: 10px; }
@@ -153,6 +155,10 @@ h1 em::after { content: ""; position: absolute; left: 0; right: 0; height: 5px; 
 .toggle.active { background: var(--mint-dark); }
 .toggle.active span { transform: translateX(10px); }
 .animation-stage { min-height: 430px; position: relative; padding: 22px 27px 17px; overflow: hidden; background: #f3f7f7; transform-origin: center center; transition: transform .25s ease; }
+.ai-preview-frame { display: none; position: absolute; z-index: 2; top: 43px; right: 0; bottom: 0; left: 0; width: 100%; height: calc(100% - 43px); border: 0; background: #24394b; }
+.animation-stage.has-ai-preview { padding-bottom: 0; }
+.animation-stage.has-ai-preview .ai-preview-frame { display: block; }
+.animation-stage.has-ai-preview .cube-scene, .animation-stage.has-ai-preview .stage-caption, .animation-stage.has-ai-preview .timeline-wrap, .animation-stage.has-ai-preview .stage-footer { display: none; }
 .stage-grid { position: absolute; inset: 0; opacity: .6; background-image: linear-gradient(#dce6e4 1px, transparent 1px), linear-gradient(90deg, #dce6e4 1px, transparent 1px); background-size: 27px 27px; mask-image: linear-gradient(to bottom, rgba(0,0,0,.46), transparent 85%); }
 .stage-topline { display: flex; position: relative; z-index: 1; justify-content: space-between; color: #8f9d9f; font: 9px "DM Mono", monospace; letter-spacing: 1.2px; }
 .stage-number { color: var(--coral); }

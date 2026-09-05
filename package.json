@@ -1,0 +1,14 @@
+{
+  "name": "math-motion-classroom",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-powered interactive math lesson generator",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

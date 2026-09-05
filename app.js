@@ -11,10 +11,14 @@ const timelineThumb = $("#timelineThumb");
 const timeReadout = $("#timeReadout");
 const playBtn = $("#playBtn");
 const toast = $("#toast");
+const aiPreviewFrame = $("#aiPreviewFrame");
+const API_BASE = (new URLSearchParams(window.location.search).get("api") || window.MATH_MOTION_API_BASE || "").replace(/\/$/, "");
 let timelineValue = 0;
 let playing = false;
 let playTimer = null;
 let generated = false;
+let currentGeneratedHtml = "";
+let currentLesson = null;
 let toastTimer;
 
 function showToast(message) {
@@ -88,19 +92,30 @@ $("#studentToggle").addEventListener("click", (event) => {
   showToast(event.currentTarget.classList.contains("active") ? "已切换到学生视角" : "已切换到教师视角");
 });
 $("#clearPrompt").addEventListener("click", () => { promptInput.value = ""; promptInput.focus(); });
+function markPromptDirty() {
+  if (!generated) return;
+  generated = false;
+  currentLesson = null;
+  currentGeneratedHtml = "";
+  animationStage.classList.remove("has-ai-preview");
+  generateBtn.innerHTML = '<span class="sparkle">✦</span><span>生成演示</span><span class="arrow">→</span>';
+}
+promptInput.addEventListener("input", () => { markPromptDirty(); updateTitleFromPrompt(); });
 $$('.suggestion-chip').forEach((chip) => chip.addEventListener("click", () => {
   promptInput.value = chip.dataset.prompt;
+  markPromptDirty();
+  updateTitleFromPrompt();
   promptInput.focus();
   showToast("已填入教学需求，可以继续修改");
 }));
 
-function updateTitleFromPrompt() {
+function updateTitleFromPrompt(preferredTitle = "") {
   const value = promptInput.value;
-  let title = "自定义数学演示";
-  if (/三角形|内角/.test(value)) title = "三角形内角和";
-  else if (/函数|坐标/.test(value)) title = "一次函数的图象";
-  else if (/勾股/.test(value)) title = "勾股定理面积拼图";
-  else if (/正方体|展开/.test(value)) title = "正方体的展开图";
+  let title = preferredTitle || "自定义数学演示";
+  if (!preferredTitle && /三角形|内角/.test(value)) title = "三角形内角和";
+  else if (!preferredTitle && /函数|坐标/.test(value)) title = "一次函数的图象";
+  else if (!preferredTitle && /勾股/.test(value)) title = "勾股定理面积拼图";
+  else if (!preferredTitle && /正方体|展开/.test(value)) title = "正方体的展开图";
   $("#topTitle").textContent = title;
   const lessonTitle = $(".lesson-intro h3");
   const lessonSub = $(".lesson-intro p");
@@ -109,7 +124,7 @@ function updateTitleFromPrompt() {
   return title;
 }
 
-function generatedHtml(title, prompt) {
+function fallbackCubeHtml(title, prompt) {
   const safeTitle = title.replace(/[<>]/g, "");
   const safePrompt = prompt.replace(/[<>]/g, "");
   return `<!doctype html>
@@ -122,9 +137,47 @@ const cube=document.getElementById('cube'),bar=document.getElementById('bar'),tr
 </script></body></html>`;
 }
 
-function downloadHtml() {
-  const title = updateTitleFromPrompt();
-  const html = generatedHtml(title, promptInput.value || "请生成一个初中数学动画演示");
+function fallbackConceptHtml(title, prompt, kind) {
+  const safeTitle = title.replace(/[<>]/g, "");
+  const safePrompt = prompt.replace(/[<>]/g, "");
+  const concepts = {
+    triangle: {
+      eyebrow: "平面几何 · 观察与拼合",
+      intro: "把三个角拼成一条直线，内角和就藏在这条直线上。",
+      visual: `<svg viewBox="0 0 520 300" aria-label="三角形三个内角拼合"><path class="tri-edge" d="M130 230 L260 54 L390 230 Z"/><path class="angle angle-a" d="M154 229 A32 32 0 0 1 149 204"/><path class="angle angle-b" d="M370 229 A32 32 0 0 0 375 204"/><path class="angle angle-c" d="M238 84 A32 32 0 0 1 282 84"/><text class="label label-a" x="145" y="210">A</text><text class="label label-b" x="368" y="210">B</text><text class="label label-c" x="257" y="94">C</text><g class="joined"><path d="M150 258 L370 258"/><path d="M150 258 l10 -6 v12 z"/><path d="M370 258 l-10 -6 v12 z"/><text x="208" y="283">A + B + C = 180°</text></g></svg>`,
+      controls: `<button id="action">▶ 拼合三个角</button><input id="slider" type="range" min="0" max="100" value="0" aria-label="拼合进度"><span id="readout">0%</span>`,
+      script: `const svg=document.querySelector('svg'),action=document.getElementById('action'),slider=document.getElementById('slider'),readout=document.getElementById('readout');function set(v){slider.value=v;readout.textContent=v+'%';svg.classList.toggle('joined-on',v>72)}slider.oninput=()=>set(slider.value);action.onclick=()=>{set(100);action.textContent='↻ 再演示'};set(0);`
+    },
+    function: {
+      eyebrow: "函数图象 · 动态关系",
+      intro: "拖动斜率滑块，观察 y = kx + 1 中 k 如何改变直线的倾斜程度。",
+      visual: `<svg viewBox="0 0 520 300" aria-label="一次函数坐标图"><g class="grid-lines"><path d="M80 38 V255 M140 38 V255 M200 38 V255 M260 38 V255 M320 38 V255 M380 38 V255 M440 38 V255 M50 65 H470 M50 125 H470 M50 185 H470 M50 245 H470"/></g><path class="axis" d="M50 245 H470 M260 270 V30"/><path class="func-line" id="funcLine" d="M80 206 L440 86"/><text class="eq" id="equation" x="330" y="62">y = 2x + 1</text><text class="axis-label" x="453" y="265">x</text><text class="axis-label" x="270" y="34">y</text></svg>`,
+      controls: `<label class="range-label">斜率 k</label><input id="slider" type="range" min="-3" max="3" step="0.5" value="2" aria-label="斜率"><span id="readout">k = 2</span>`,
+      script: `const line=document.getElementById('funcLine'),slider=document.getElementById('slider'),readout=document.getElementById('readout'),equation=document.getElementById('equation');function set(){const k=Number(slider.value),y1=165-k*24,y2=165+k*24;line.setAttribute('d','M100 '+Math.max(48,Math.min(240,y1))+' L420 '+Math.max(48,Math.min(240,y2)));readout.textContent='k = '+k;equation.textContent='y = '+k+'x + 1'}slider.oninput=set;set();`
+    },
+    pythagorean: {
+      eyebrow: "空间与面积 · 勾股定理",
+      intro: "把直角三角形两条直角边上的正方形，拼成斜边上的大正方形。",
+      visual: `<svg viewBox="0 0 520 300" aria-label="勾股定理面积拼图"><path class="right-triangle" d="M170 230 L170 90 L390 230 Z"/><path class="square square-a" d="M170 90 L80 90 L80 230 L170 230 Z"/><path class="square square-b" d="M170 230 L390 230 L390 450 L170 450 Z"/><path class="square square-c" d="M390 230 L530 90 L390 -50 L250 90 Z"/><text x="100" y="165">a²</text><text x="260" y="272">b²</text><text x="359" y="107">c²</text><text class="sum" x="208" y="55">a² + b² = c²</text></svg>`,
+      controls: `<button id="action">▶ 开始拼图</button><input id="slider" type="range" min="0" max="100" value="0" aria-label="拼图进度"><span id="readout">0%</span>`,
+      script: `const svg=document.querySelector('svg'),action=document.getElementById('action'),slider=document.getElementById('slider'),readout=document.getElementById('readout');function set(v){slider.value=v;readout.textContent=v+'%';svg.style.setProperty('--progress',v/100)}slider.oninput=()=>set(slider.value);action.onclick=()=>{set(100);action.textContent='↻ 再演示'};set(0);`
+    }
+  };
+  const concept = concepts[kind] || concepts.triangle;
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle} · 课堂动势</title><style>
+*{box-sizing:border-box}body{margin:0;background:#24394b;color:#fff;font-family:Arial,"Microsoft YaHei",sans-serif;min-height:100vh;display:grid;place-items:center}.page{width:min(1000px,100%);padding:44px 6vw;display:grid;grid-template-columns:.72fr 1.28fr;gap:35px;align-items:center}.eyebrow{color:#ffd964;letter-spacing:2px;font-size:11px}.copy h1{font-size:clamp(34px,5vw,58px);line-height:1.13;margin:17px 0}.copy h1 em{color:#ff806b;font-style:normal}.copy p{max-width:265px;color:#afbec3;font-size:14px;line-height:1.8}.visual{min-width:0}.visual svg{width:100%;max-height:340px;overflow:visible}.tri-edge,.right-triangle{fill:#ff806b;fill-opacity:.22;stroke:#ff9b8b;stroke-width:3}.angle{fill:none;stroke:#ffd964;stroke-width:4;stroke-linecap:round}.label{fill:#ffd964;font-weight:bold;font-size:16px}.joined{opacity:0;transform:translateY(25px);transform-origin:center;transition:.7s}.joined path:first-child{stroke:#a9e2c7;stroke-width:3}.joined path:nth-child(2){fill:#a9e2c7}.joined text{fill:#a9e2c7;font-size:17px;font-weight:bold}.joined-on .tri-edge,.joined-on .angle{opacity:.2}.joined-on .joined{opacity:1;transform:translateY(0)}.grid-lines path{stroke:#4d6975;stroke-width:1}.axis{stroke:#bbcbc9;stroke-width:2}.func-line{stroke:#ff806b;stroke-width:5;stroke-linecap:round;transition:.35s}.eq,.sum{fill:#ffd964;font-size:17px;font-weight:bold}.axis-label{fill:#aabcc0;font-size:13px}.right-triangle{fill:#ff806b;fill-opacity:.27}.square{fill:#a9e2c7;fill-opacity:.17;stroke:#a9e2c7;stroke-width:2;transform-origin:center;transition:.8s}.square-a{transform:translate(90px,0) rotate(-9deg) scale(calc(.86 + var(--progress,0)*.14))}.square-b{transform:translate(0,-34px) rotate(5deg) scale(calc(.86 + var(--progress,0)*.14))}.square-c{fill:#ffd964;fill-opacity:.22;transform:scale(calc(.76 + var(--progress,0)*.24))}.right-triangle{transform:translateX(calc(var(--progress,0)*4px));transition:.8s}.sum{opacity:calc(.25 + var(--progress,0)*.75);transition:.8s}.controls{display:flex;align-items:center;gap:10px;margin:12px auto 0;max-width:470px}.controls button{border:1px solid #718993;border-radius:5px;padding:9px 13px;background:#314b5c;color:#fff;cursor:pointer;white-space:nowrap}.controls button:hover{background:#3e5c6c}.controls input{flex:1;accent-color:#ff6c59}.controls span,.range-label{color:#aabcc0;font:12px Arial}.prompt{grid-column:1/-1;border-top:1px solid #405967;padding-top:15px;color:#8fa7ad;font-size:11px}@media(max-width:700px){.page{grid-template-columns:1fr;padding:30px 23px}.visual svg{max-height:270px}.copy h1{font-size:40px}}
+</style></head><body><main class="page"><div class="copy"><div class="eyebrow">${concept.eyebrow}</div><h1>${safeTitle}</h1><p>${concept.intro}</p></div><div class="visual">${concept.visual}<div class="controls">${concept.controls}</div><p style="color:#8fa7ad;text-align:center;font-size:12px;margin:18px 0 0">先预测，再拖动验证你的想法</p></div><div class="prompt">本次课堂需求：${safePrompt}</div></main><script>${concept.script}</script></body></html>`;
+}
+
+function fallbackGeneratedHtml(title, prompt) {
+  if (/三角形|内角/.test(prompt)) return fallbackConceptHtml(title, prompt, "triangle");
+  if (/函数|坐标/.test(prompt)) return fallbackConceptHtml(title, prompt, "function");
+  if (/勾股/.test(prompt)) return fallbackConceptHtml(title, prompt, "pythagorean");
+  return fallbackCubeHtml(title, prompt);
+}
+
+function downloadHtml(html = currentGeneratedHtml || fallbackGeneratedHtml(updateTitleFromPrompt(), promptInput.value || "请生成一个初中数学动画演示")) {
+  const title = currentLesson?.title || updateTitleFromPrompt();
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -138,21 +191,128 @@ function downloadHtml() {
   showToast("HTML 已下载，可以直接发给学生打开");
 }
 
-generateBtn.addEventListener("click", () => {
+async function requestAiLesson(prompt) {
+  const response = await fetch(`${API_BASE}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, grade: "七至九年级", duration: "40 分钟" })
+  });
+  let payload = {};
+  try { payload = await response.json(); } catch { /* server returned no JSON */ }
+  if (!response.ok) throw new Error(payload.error || `生成服务不可用（${response.status}）`);
+  if (!payload.html || typeof payload.html !== "string") throw new Error("生成服务没有返回 HTML");
+  return payload;
+}
+
+function showLessonResult(lesson, source) {
+  currentLesson = lesson;
+  currentGeneratedHtml = lesson.html;
+  generated = true;
+  updateTitleFromPrompt(lesson.title);
+  aiPreviewFrame.srcdoc = lesson.html;
+  animationStage.classList.add("has-ai-preview");
+  const objective = $(".objective-box p");
+  if (objective && lesson.objective) objective.textContent = lesson.objective;
+  const summary = $(".lesson-intro p");
+  if (summary) summary.textContent = `${lesson.summary || "互动数学演示"} · ${lesson.grade || "7-9 年级"}`;
+  const steps = $(".lesson-steps");
+  if (steps && Array.isArray(lesson.steps)) {
+    steps.innerHTML = "";
+    lesson.steps.slice(0, 6).forEach((step, index) => {
+      const node = document.createElement("div");
+      node.className = `lesson-step${index === 0 ? " active" : ""}`;
+      node.dataset.step = String(index + 1);
+      node.innerHTML = `<span class="step-index">${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.description)}</p></div><span class="step-time">${escapeHtml(step.duration)}</span>`;
+      steps.appendChild(node);
+    });
+    bindLessonSteps();
+  }
+  persistProject(lesson.title, promptInput.value, source);
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>\"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[character]));
+}
+
+function persistProject(title, prompt, source) {
+  const key = "math-motion-projects";
+  const projects = JSON.parse(localStorage.getItem(key) || "[]");
+  const item = { title, prompt, source, at: new Date().toISOString() };
+  const next = [item, ...projects.filter((project) => project.title !== title)].slice(0, 8);
+  localStorage.setItem(key, JSON.stringify(next));
+  const recent = $(".recent-list");
+  if (recent) {
+    const existing = recent.querySelector(".recent-item.current");
+    if (existing) existing.remove();
+    const node = document.createElement("button");
+    node.className = "recent-item current";
+    node.dataset.prompt = prompt;
+    node.innerHTML = `<span class="file-badge coral">◇</span><span><strong>${escapeHtml(title)}</strong><small>刚刚 · ${source === "ai" ? "AI 已生成" : "内置演示"}</small></span>`;
+    recent.prepend(node);
+  }
+}
+
+function bindLessonSteps() {
+  $$('.lesson-step').forEach((step) => step.addEventListener("click", () => {
+    $$('.lesson-step').forEach((item) => item.classList.toggle("active", item === step));
+    const target = Number(step.dataset.step);
+    setTimeline([0, .36, .73][target - 1] || 0);
+  }));
+}
+
+function loadSavedProjects() {
+  const projects = JSON.parse(localStorage.getItem("math-motion-projects") || "[]");
+  const recent = $(".recent-list");
+  if (!recent || !projects.length) return;
+  projects.slice(0, 4).reverse().forEach((project) => {
+    if (recent.querySelector(`[data-project-title="${CSS.escape(project.title)}"]`)) return;
+    const node = document.createElement("button");
+    node.className = "recent-item";
+    node.dataset.prompt = project.prompt || "";
+    node.dataset.projectTitle = project.title;
+    node.innerHTML = `<span class="file-badge ${project.source === "ai" ? "mint" : "coral"}">${project.source === "ai" ? "✦" : "◇"}</span><span><strong>${escapeHtml(project.title)}</strong><small>${project.source === "ai" ? "AI 生成" : "内置演示"}</small></span>`;
+    recent.prepend(node);
+  });
+}
+
+$(".recent-list").addEventListener("click", (event) => {
+  const item = event.target.closest(".recent-item");
+  if (!item || !item.dataset.prompt) return;
+  promptInput.value = item.dataset.prompt;
+  generated = false;
+  currentLesson = null;
+  currentGeneratedHtml = "";
+  animationStage.classList.remove("has-ai-preview");
+  generateBtn.innerHTML = '<span class="sparkle">✦</span><span>生成演示</span><span class="arrow">→</span>';
+  updateTitleFromPrompt(item.dataset.projectTitle || "");
+  showToast(`已打开“${item.dataset.projectTitle || "课件"}”`);
+});
+
+async function generateLesson() {
   if (generated) { downloadHtml(); return; }
   if (!promptInput.value.trim()) { promptInput.focus(); showToast("先描述你想演示的数学概念"); return; }
   generateBtn.classList.add("is-loading");
   animationStage.classList.add("is-generating");
   generateBtn.innerHTML = '<span class="sparkle">✦</span><span>正在生成…</span><span class="arrow">·</span>';
-  setTimeout(() => {
+  try {
+    const lesson = await requestAiLesson(promptInput.value.trim());
+    showLessonResult(lesson, "ai");
+    showToast(`AI 已生成“${lesson.title}”，可预览或下载`);
+  } catch (error) {
+    const title = updateTitleFromPrompt();
+    const fallback = { title, grade: "七至九年级", summary: "内置交互演示", objective: "先观察动画，再用自己的话说出变化规律。", steps: [{ title: "先观察", description: "看看动画中的对象从哪里开始变化。", duration: "0:30" }, { title: "再操作", description: "拖动时间轴，验证你的预测。", duration: "1:20" }, { title: "找规律", description: "用数学语言描述你看到的关系。", duration: "2:10" }], html: fallbackGeneratedHtml(title, promptInput.value) };
+    currentGeneratedHtml = fallback.html;
     generated = true;
-    updateTitleFromPrompt();
+    animationStage.classList.remove("has-ai-preview");
+    persistProject(title, promptInput.value, "fallback");
+    showToast(`${error.message}，已切换到内置演示，可继续体验`);
+  } finally {
     generateBtn.classList.remove("is-loading");
     animationStage.classList.remove("is-generating");
     generateBtn.innerHTML = '<span class="sparkle">↓</span><span>下载 HTML</span><span class="arrow">→</span>';
-    showToast("演示已生成，点击按钮即可下载 HTML");
-  }, 1600);
-});
+  }
+}
+generateBtn.addEventListener("click", generateLesson);
 
 $("#previewFullBtn").addEventListener("click", () => $("#fullPreview").classList.add("open"));
 $("#previewCanvasBtn").addEventListener("click", () => $("#fullPreview").classList.add("open"));
@@ -175,11 +335,7 @@ $$('.lesson-tab').forEach((tab) => tab.addEventListener("click", () => {
   $$('.lesson-tab').forEach((item) => item.classList.toggle("active", item === tab));
   ["lesson", "quiz", "notes"].forEach((name) => $(`#${name}Tab`).classList.toggle("hidden", name !== tab.dataset.tab));
 }));
-$$('.lesson-step').forEach((step) => step.addEventListener("click", () => {
-  $$('.lesson-step').forEach((item) => item.classList.toggle("active", item === step));
-  const target = Number(step.dataset.step);
-  setTimeline([0, .36, .73][target - 1] || 0);
-}));
+bindLessonSteps();
 $("#addStep").addEventListener("click", (event) => {
   const count = $$('.lesson-step').length + 1;
   const node = document.createElement("div");
@@ -219,4 +375,31 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") $$('.modal-backdrop.open').forEach((modal) => modal.classList.remove("open"));
 });
 
+async function checkApiStatus() {
+  const chip = $("#apiStatusChip");
+  const statusText = $("#apiStatusText");
+  const modeText = $("#apiModeText");
+  try {
+    const response = await fetch(`${API_BASE}/api/status`, { headers: { Accept: "application/json" } });
+    const status = await response.json();
+    if (status.configured) {
+      statusText.textContent = `AI 已连接 · ${status.model || "Responses API"}`;
+      modeText.textContent = "AI 生成已开启";
+      chip.classList.remove("offline");
+    } else {
+      statusText.textContent = "AI 未配置 · 可体验内置演示";
+      modeText.textContent = "内置演示模式";
+      chip.classList.add("offline");
+    }
+  } catch {
+    statusText.textContent = "AI 服务未连接 · 可体验内置演示";
+    modeText.textContent = "静态预览模式";
+    chip.classList.add("offline");
+  }
+}
+
+const savedNote = localStorage.getItem("math-motion-note");
+if (savedNote && $("#notesArea")) $("#notesArea").value = savedNote;
+loadSavedProjects();
+checkApiStatus();
 setTimeline(0);
